@@ -29,6 +29,7 @@ const PostSchema = new mongoose.Schema({
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true },
     images: [{ type: String }],
+    group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -66,6 +67,11 @@ const authenticate = (req, res, next) => {
 };
 
 // Routes
+
+// Home Route
+app.get('/', (req, res) => {
+    res.status(200).json({ message: 'Welcome to the Social Media API' });
+});
 
 // User Registration
 app.post('/users/register', async (req, res) => {
@@ -135,6 +141,42 @@ app.post('/groups', authenticate, async (req, res) => {
         });
         await newGroup.save();
         res.status(201).json(newGroup);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Get Group Posts
+app.get('/groups/:groupId/posts', authenticate, async (req, res) => {
+    const { groupId } = req.params;
+    try {
+        const groupPosts = await Post.find({ group: groupId }).populate('author', 'username profilePic');
+        res.status(200).json(groupPosts);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Create Group Post
+app.post('/groups/:groupId/posts', authenticate, async (req, res) => {
+    const { groupId } = req.params;
+    const { content, images } = req.body;
+    try {
+        // Ensure user is a member of the group
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (!group.members.includes(req.user.id)) {
+            return res.status(403).json({ message: 'You are not a member of this group' });
+        }
+
+        const newGroupPost = new Post({
+            author: req.user.id,
+            content,
+            images,
+            group: groupId
+        });
+        await newGroupPost.save();
+        res.status(201).json(newGroupPost);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
