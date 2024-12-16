@@ -50,20 +50,6 @@ const Post = mongoose.model('Post', PostSchema);
 const Group = mongoose.model('Group', GroupSchema);
 const Message = mongoose.model('Message', MessageSchema);
 
-// Authentication middleware
-const authenticate = (req, res, next) => {
-    const token = req.header('Authorization');
-    if (!token) return res.status(401).json({ message: 'Access denied' });
-
-    try {
-        const verified = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = verified;
-        next();
-    } catch (err) {
-        res.status(400).json({ message: 'Invalid token' });
-    }
-};
-
 // Routes
 
 // Home Route
@@ -96,14 +82,22 @@ app.post('/users/login', async (req, res) => {
         if (!validPassword) return res.status(400).json({ message: 'Invalid password' });
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        res.status(200).json({ token });
+        res.status(200).json({
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                profilePic: user.profilePic
+            }
+        });
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
 });
 
 // Get All Users
-app.get('/users', authenticate, async (req, res) => {
+app.get('/users', async (req, res) => {
     try {
         const users = await User.find().select('-password'); // Exclude passwords from response
         res.status(200).json(users);
@@ -113,11 +107,11 @@ app.get('/users', authenticate, async (req, res) => {
 });
 
 // Create Post
-app.post('/posts', authenticate, async (req, res) => {
-    const { content } = req.body;
+app.post('/posts', async (req, res) => {
+    const { author, content } = req.body;
     try {
         const newPost = new Post({
-            author: req.user.id,
+            author,
             content
         });
         await newPost.save();
@@ -128,7 +122,7 @@ app.post('/posts', authenticate, async (req, res) => {
 });
 
 // Get Posts
-app.get('/posts', authenticate, async (req, res) => {
+app.get('/posts', async (req, res) => {
     try {
         const posts = await Post.find().populate('author', 'username profilePic');
         res.status(200).json(posts);
@@ -138,13 +132,13 @@ app.get('/posts', authenticate, async (req, res) => {
 });
 
 // Create Group
-app.post('/groups', authenticate, async (req, res) => {
-    const { name, description } = req.body;
+app.post('/groups', async (req, res) => {
+    const { name, description, members } = req.body;
     try {
         const newGroup = new Group({
             name,
             description,
-            members: [req.user.id]
+            members
         });
         await newGroup.save();
         res.status(201).json(newGroup);
@@ -154,7 +148,7 @@ app.post('/groups', authenticate, async (req, res) => {
 });
 
 // Get Group Posts
-app.get('/groups/:groupId/posts', authenticate, async (req, res) => {
+app.get('/groups/:groupId/posts', async (req, res) => {
     const { groupId } = req.params;
     try {
         const groupPosts = await Post.find({ group: groupId }).populate('author', 'username profilePic');
@@ -165,18 +159,12 @@ app.get('/groups/:groupId/posts', authenticate, async (req, res) => {
 });
 
 // Create Group Post
-app.post('/groups/:groupId/posts', authenticate, async (req, res) => {
+app.post('/groups/:groupId/posts', async (req, res) => {
     const { groupId } = req.params;
-    const { content } = req.body;
+    const { author, content } = req.body;
     try {
-        const group = await Group.findById(groupId);
-        if (!group) return res.status(404).json({ message: 'Group not found' });
-        if (!group.members.includes(req.user.id)) {
-            return res.status(403).json({ message: 'You are not a member of this group' });
-        }
-
         const newGroupPost = new Post({
-            author: req.user.id,
+            author,
             content,
             group: groupId
         });
@@ -188,11 +176,11 @@ app.post('/groups/:groupId/posts', authenticate, async (req, res) => {
 });
 
 // Private Messaging
-app.post('/messages', authenticate, async (req, res) => {
-    const { receiver, content } = req.body;
+app.post('/messages', async (req, res) => {
+    const { sender, receiver, content } = req.body;
     try {
         const newMessage = new Message({
-            sender: req.user.id,
+            sender,
             receiver,
             content
         });
