@@ -3,7 +3,6 @@ import express from 'express';
 import mongoose from 'mongoose';
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
-import multer from 'multer';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -28,7 +27,6 @@ const UserSchema = new mongoose.Schema({
 const PostSchema = new mongoose.Schema({
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true },
-    images: [{ type: String }],
     group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
     createdAt: { type: Date, default: Date.now }
 });
@@ -104,14 +102,23 @@ app.post('/users/login', async (req, res) => {
     }
 });
 
+// Get All Users
+app.get('/users', authenticate, async (req, res) => {
+    try {
+        const users = await User.find().select('-password'); // Exclude passwords from response
+        res.status(200).json(users);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
 // Create Post
 app.post('/posts', authenticate, async (req, res) => {
-    const { content, images } = req.body;
+    const { content } = req.body;
     try {
         const newPost = new Post({
             author: req.user.id,
-            content,
-            images
+            content
         });
         await newPost.save();
         res.status(201).json(newPost);
@@ -160,9 +167,8 @@ app.get('/groups/:groupId/posts', authenticate, async (req, res) => {
 // Create Group Post
 app.post('/groups/:groupId/posts', authenticate, async (req, res) => {
     const { groupId } = req.params;
-    const { content, images } = req.body;
+    const { content } = req.body;
     try {
-        // Ensure user is a member of the group
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: 'Group not found' });
         if (!group.members.includes(req.user.id)) {
@@ -172,7 +178,6 @@ app.post('/groups/:groupId/posts', authenticate, async (req, res) => {
         const newGroupPost = new Post({
             author: req.user.id,
             content,
-            images,
             group: groupId
         });
         await newGroupPost.save();
